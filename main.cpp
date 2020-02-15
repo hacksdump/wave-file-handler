@@ -9,26 +9,25 @@ using namespace std;
 
 class FileHandler {
 private:
-    int bytesWritten;
     string filename;
     ofstream fileOutStream;
 public:
-    FileHandler() {}
+    FileHandler() = default;
 
-    FileHandler(string filename) {
+    explicit FileHandler(string filename) {
         this->filename = std::move(filename);
         this->fileOutStream.open(this->filename, ios_base::binary);
     }
 
     /**
      * Initialize file if not initialized with constructor
-     * @param filename
+     * @param newFilename
      */
-    void initializeFile(string filename) {
+    void initializeFile(string newFilename) {
         if (this->fileOutStream.is_open()) {
             this->fileOutStream.close();
         }
-        this->filename = std::move(filename);
+        this->filename = std::move(newFilename);
         this->fileOutStream.open(this->filename, ios_base::binary);
     }
 
@@ -41,7 +40,6 @@ public:
         char* buffer = new char[buf_size];
         buffer[0] = toWrite;
         fileOutStream.write(buffer, buf_size);
-        this->bytesWritten += 1;
         delete [] buffer;
     }
 
@@ -54,12 +52,21 @@ public:
     void writeBytes(T data, size_t numberOfBytes) {
         char* buffer = new char[numberOfBytes];
         for (int idx = 0; idx < numberOfBytes; idx++) {
-            buffer[idx] = data & 0xFF;
-            data = data >> 8;
+            unsigned int bitMaskForLowestByte = 0xFF;
+            unsigned int shiftByBits = 8;
+            buffer[idx] = data & bitMaskForLowestByte;
+            data = data >> shiftByBits;
         }
         this->fileOutStream.write(buffer, numberOfBytes);
-        this->bytesWritten += numberOfBytes;
         delete [] buffer;
+    }
+
+    template <typename T>
+    void modifyBytes(T data, unsigned int bytePosition, size_t numberOfBytes) {
+        unsigned int currentFilePosition = this->fileOutStream.tellp();
+        this->fileOutStream.seekp(bytePosition, ios::beg);
+        this->writeBytes(data, numberOfBytes);
+        this->fileOutStream.seekp(currentFilePosition, ios::beg);
     }
 
     /**
@@ -68,7 +75,6 @@ public:
      */
     void writeString(const string& toWrite) {
         fileOutStream << toWrite;
-        this->bytesWritten += toWrite.length();
     }
 
     /**
@@ -76,7 +82,11 @@ public:
      * @return Number of bytes written
      */
     int currentSize() {
-        return this->bytesWritten;
+        unsigned int currentFilePosition = this->fileOutStream.tellp();
+        this->fileOutStream.seekp(0, ios::end);
+        int fileSize = this->fileOutStream.tellp();
+        this->fileOutStream.seekp(currentFilePosition, ios::beg);
+        return fileSize;
     }
 };
 
@@ -110,6 +120,15 @@ private:
         this->rawFileHandler.writeString(chunkID);
         this->rawFileHandler.writeBytes(chunkSize, sizeof(chunkSize));
         this->rawFileHandler.writeString(format);
+    }
+
+    /**
+     * Set chunk size when all headers and data have been written
+     */
+    void setChunkSize() {
+        size_t currentFileSize = this->rawFileHandler.currentSize();
+        unsigned int sizeToWrite = currentFileSize - 8;
+        this->rawFileHandler.modifyBytes(sizeToWrite, 4, 4);
     }
 
     /**
@@ -163,10 +182,12 @@ private:
         this->rawFileHandler.writeBytes(bitsPerSample, sizeof(bitsPerSample));
     }
 public:
-    WaveFileHandler(string filename) {
+    explicit WaveFileHandler(string filename) {
         this->rawFileHandler.initializeFile(std::move(filename));
         this->writeRiffChunkDescriptor();
         this->writeFmtSubChunk();
+        // Set Chunk size at the end of all writes (headers and data)
+        this->setChunkSize();
     }
 };
 
