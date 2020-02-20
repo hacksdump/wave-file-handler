@@ -2,6 +2,8 @@
 #include <fstream>
 #include <string>
 #include <utility>
+#include <math.h>
+
 using namespace std;
 
 // The default byte-write order is little-endian
@@ -88,11 +90,35 @@ public:
         this->fileOutStream.seekp(currentFilePosition, ios::beg);
         return fileSize;
     }
+
+    /**
+     * Get current write pointer (byte number) associated with the file
+     * @return
+     */
+    unsigned int currentWriteHeadPosition() {
+        return this->fileOutStream.tellp();
+    }
+
+    void close() {
+        this->fileOutStream.close();
+    }
 };
 
 class WaveFileHandler {
 private:
     FileHandler rawFileHandler;
+    unsigned int dataSubChunkSizeLocation{};
+    unsigned int dataStartLocation{};
+    // Size of a single sample/frame in bits
+    // 8 bits = 8, 16 bits = 16, etc.
+    unsigned short bitsPerSample;
+
+    void setDataSubChunkSizeLocation(unsigned int locationBytes) {
+        dataSubChunkSizeLocation = locationBytes;
+    }
+    void setDataStartLocation(unsigned int locationBytes) {
+        dataStartLocation = locationBytes;
+    }
 
     /**
      * Write RIFF header
@@ -137,10 +163,7 @@ private:
      * TODO: Make this function generic to write other formats other than PCM as well.
      */
     void writeFmtSubChunk() {
-        // Size of a single sample/frame in bits
-        // 8 bits = 8, 16 bits = 16, etc.
-        const unsigned int bitsPerSample = 16;
-        // Also storing bytes per channel
+        // Bytes per sample (=2 for 16 bit resolution)
         const unsigned bytesPerSample = bitsPerSample / 8;
 
         // Contains the letters "fmt "
@@ -181,17 +204,68 @@ private:
         this->rawFileHandler.writeBytes(blockAlign, sizeof(blockAlign));
         this->rawFileHandler.writeBytes(bitsPerSample, sizeof(bitsPerSample));
     }
+
+    /**
+     * Write only the header of data sub-chunk
+     * Actual data to be written by separate function
+     */
+    void writeDataSubChunkHeader() {
+        // Contains the letters "data"
+        // (0x64617461 big-endian form).
+        const string subChunk2ID = "data";
+
+        // Subchunk2Size == NumSamples * NumChannels * BitsPerSample/8
+        // This is the number of bytes in the data.
+        // You can also think of this as the size
+        // of the rest of the sub-chunk following this number.
+        // Initialize to 0 since there is no data initially.
+        const int subChunk2Size = 0;
+
+        this->rawFileHandler.writeString(subChunk2ID);
+        this->setDataSubChunkSizeLocation(this->rawFileHandler.currentWriteHeadPosition());
+        this->rawFileHandler.writeBytes(subChunk2Size, sizeof(subChunk2Size));
+        this->setDataStartLocation(this->rawFileHandler.currentWriteHeadPosition());
+    }
+
+    void writeDataSubChunkSize() {
+        size_t currentFileSize = this->rawFileHandler.currentSize();
+        unsigned int sizeToWrite = currentFileSize - this->dataStartLocation;
+        this->rawFileHandler.modifyBytes(sizeToWrite, this->dataSubChunkSizeLocation, 4);
+    }
 public:
     explicit WaveFileHandler(string filename) {
+        this->bitsPerSample = 16;
         this->rawFileHandler.initializeFile(std::move(filename));
         this->writeRiffChunkDescriptor();
         this->writeFmtSubChunk();
+        this->writeDataSubChunkHeader();
+    }
+
+    template <typename T>
+    void writeSample(T sample_data, size_t sample_size) {
+        this->rawFileHandler.writeBytes(sample_data, sample_size);
+    }
+
+    void close() {
         // Set Chunk size at the end of all writes (headers and data)
         this->setChunkSize();
+        // Set data sub-chunk size
+        this->writeDataSubChunkSize();
+        // Finally close the file
+        this->rawFileHandler.close();
     }
 };
 
 int main() {
     WaveFileHandler wave_file("sample.wav");
+    int sample_rate = 44100;
+    int frequency = 500;
+    int duration = 5;
+    float amplitude = 0.1;
+    for (int i = 0; i <= sample_rate * duration; i++) {
+        short value = sin(2 * M_PI * i / sample_rate * frequency) * ((1 << 15) - 1) * amplitude;
+        wave_file.writeSample(value, 2);
+    }
+    wave_file.close();
     return 0;
 }
