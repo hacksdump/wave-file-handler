@@ -2,7 +2,7 @@
 #include <fstream>
 #include <string>
 #include <utility>
-#include <math.h>
+#include <cmath>
 #include "FileHandler.h"
 #include "WaveFileHandler.h"
 
