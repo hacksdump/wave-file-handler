@@ -3,106 +3,12 @@
 #include <string>
 #include <utility>
 #include <math.h>
+#include "FileHandler.h"
 
 using namespace std;
 
 // The default byte-write order is little-endian
 // It changes only for writing strings, i.e. big-endian (the natural order) is used.
-
-class FileHandler {
-private:
-    string filename;
-    ofstream fileOutStream;
-public:
-    FileHandler() = default;
-
-    explicit FileHandler(string filename) {
-        this->filename = std::move(filename);
-        this->fileOutStream.open(this->filename, ios_base::binary);
-    }
-
-    /**
-     * Initialize file if not initialized with constructor
-     * @param newFilename
-     */
-    void initializeFile(string newFilename) {
-        if (this->fileOutStream.is_open()) {
-            this->fileOutStream.close();
-        }
-        this->filename = std::move(newFilename);
-        this->fileOutStream.open(this->filename, ios_base::binary);
-    }
-
-    /**
-     * Appends a single byte at the end of file
-     * @param toWrite
-     */
-    void writeByte(char toWrite) {
-        int buf_size = 1;
-        char* buffer = new char[buf_size];
-        buffer[0] = toWrite;
-        fileOutStream.write(buffer, buf_size);
-        delete [] buffer;
-    }
-
-    /**
-     * Write bytes from given data in little-endian format
-     * @tparam T
-     * @param data
-     */
-    template <typename T>
-    void writeBytes(T data, size_t numberOfBytes) {
-        char* buffer = new char[numberOfBytes];
-        for (int idx = 0; idx < numberOfBytes; idx++) {
-            unsigned int bitMaskForLowestByte = 0xFF;
-            unsigned int shiftByBits = 8;
-            buffer[idx] = data & bitMaskForLowestByte;
-            data = data >> shiftByBits;
-        }
-        this->fileOutStream.write(buffer, numberOfBytes);
-        delete [] buffer;
-    }
-
-    template <typename T>
-    void modifyBytes(T data, unsigned int bytePosition, size_t numberOfBytes) {
-        unsigned int currentFilePosition = this->fileOutStream.tellp();
-        this->fileOutStream.seekp(bytePosition, ios::beg);
-        this->writeBytes(data, numberOfBytes);
-        this->fileOutStream.seekp(currentFilePosition, ios::beg);
-    }
-
-    /**
-     * Writes string in big-endian format
-     * @param toWrite
-     */
-    void writeString(const string& toWrite) {
-        fileOutStream << toWrite;
-    }
-
-    /**
-     * Get number of bytes that have been written via object of this class.
-     * @return Number of bytes written
-     */
-    int currentSize() {
-        unsigned int currentFilePosition = this->fileOutStream.tellp();
-        this->fileOutStream.seekp(0, ios::end);
-        int fileSize = this->fileOutStream.tellp();
-        this->fileOutStream.seekp(currentFilePosition, ios::beg);
-        return fileSize;
-    }
-
-    /**
-     * Get current write pointer (byte number) associated with the file
-     * @return
-     */
-    unsigned int currentWriteHeadPosition() {
-        return this->fileOutStream.tellp();
-    }
-
-    void close() {
-        this->fileOutStream.close();
-    }
-};
 
 class WaveFileHandler {
 private:
