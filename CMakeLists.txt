@@ -3,4 +3,4 @@ project(audio)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(audio main.cpp FileHandler.cpp FileHandler.h)
+add_executable(audio main.cpp FileHandler.cpp FileHandler.h WaveFileHandler.cpp WaveFileHandler.h)
